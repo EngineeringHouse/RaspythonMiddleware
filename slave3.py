@@ -1,204 +1,87 @@
-#RPi Pinouts
+# RPi Pinouts
 
-#I2C Pins 
-#GPIO2 -> SDA
-#GPIO3 -> SCL
+# I2C Pins
+# GPIO2 -> SDA
+# GPIO3 -> SCL
 
 # IMPORTS
 
-import time
-import pysher
 import json
-import sys
 import urllib.request
 
-
-# Testing diables some things (so it runs away from raspi)
+# Testing disables some things (so it runs away from raspi)
 testMode = False
-if(not testMode):
-	import smbus
-	# for RPI version 1, use "bus = smbus.SMBus(0)"
-	bus = smbus.SMBus(1)
+if not testMode:
+    import smbus
 
-# CONSTANTS
-# Pusher Constants
-app_id = "506429"
-key = "161ccb0b7e8071fb8505"
-secret = "b6b6fe9319b068be1bff"
-cluster = "us2"
-
-channelName = 'rooms'
-eventName = 'ModuleChange'
+    # for RPI version 1, use "bus = smbus.SMBus(0)"
+    bus = smbus.SMBus(1)
 
 # RESTful endpoint
 base_url = "http://ehmain.rh.rit.edu/api/"
-pre_api = "rooms/"
-post_api = "/config"
 
-
-#Slave Address 1
-address = 0x04
 
 def main():
+    try:
+        f = open('./room_id.conf', 'r')
+        room_id = int(f.readLine().strip())
+        f.close()
 
-	# Read room id
-	roomId = -1
+    except FileNotFoundError as e:
+        room_id = 8126
 
-	try:
-		f = open('./room_id.conf', 'r')
-	except FileNotFoundError as e:
-		roomId = 8126
-	else:	
-		roomId = int(f.readLine().strip())
-		f.close()
-	
-#	#Establish pusher connection
-#	pusher = pysher.Pusher(appkey)
-#
-#	def connectionHandler(data):
-#		channel = pusher.subscribe(channelName)
-#		channel.bind(eventName, eventHandler)
-#
-#	pusher.connection.bind('pusher:connection_established', connectionHandler)
-#	pusher.connect()
+    # Listen for incoming messages from the board
+    # Will need to pre-populate these in the database because I don't know
+    # how to detect them.
+    current_status = False
+    while True:
 
-	# Listen for incoming messages from the board
-	# Will need to prepopulate these in the database because I don't know
-	# how to detect them.
-	while True:
-		lastStatus = currentStatus
-		currentStatus = getStatus()
-		if(currentStatus != lastStatus):
-			s = loads(currentStatus)
-			for module in s['modules']:
+        last_status = current_status
+        current_status = get_status(room_id)
 
-				bus.write_byte(module['i2c_address'], LEDModule.fromCode(module['status') if upper(module['type']) == "LED" else BlindModule.fromCode(module['status']))
+        if current_status != last_status:
 
-			
-		
+            s = json.loads(current_status)
+            for module in s['modules']:
+                bus.write_byte(
+                    module['i2c_address'],
+                    from_code(module['status'], led_module_dict()) if module['type'].upper() == "LED"
+                    else from_code(module['status'], blind_module_dict())
+                )
 
-#		# This should probably just be removed. It's trash
-#		if(not testMode):
-#			#Receives the data from the User
-#			data = raw_input("Enter the led command to be sent: ")
-#			data_list = list(data)
-#			for i in data_list:
-#				try:
-#					#Sends to the Slaves 
-#					writeNumber(ord(i))
-#					time.sleep(.1)
-#				except Exception as e:
-#					print(e)
-#		
-#			try:
-#				writeNumber(0x0A)
-#			except Exception as e:
-#					print(e)
-
-
-
-# Still no idea what an event looks like
-# Never got one working
-def eventHandler(*args, **kwargs):
-	print(args)
-	print(kwargs)
-	if(not testMode):
-		event = json.loads( kwargs["data"] )
-
-		bus.write_byte_data(address, 0, value)
-
-# Given how this got updated, this name is bad. Can be used for general posts tho
-def postConfirmation(currentState):
-	req = urllib.request.Request(url=base_url+pre_api+str(roomId),
-									method='POST',
-									data=json.dumps(currentState))
-
-	res = urllib.request.urlopen(req)
-	return res.read().decode('utf-8')
 
 # gets the status for polling because fuck me
-def getStatus():
-	req = urllib.request.Request(url=base_url+pre_api+str(roomId))
-	res = urllib.request.urlopen(req)
-	return res.read().decode('utf-8')
+def get_status(room_id):
+    req = urllib.request.Request(url=base_url + '/rooms/' + str(room_id))
+    res = urllib.request.urlopen(req)
+    return res.read().decode('utf-8')
 
 
-
-# Stuff to deal with different types of modules
-class Module:
-	def __init__(self, id_, addr):
-		self.id = id_
-		self.address = addr
-		status = 0
-	
-	# Should be the same across the subclasses, but python is weird.
-	def getStatus(self):
-		return {
-				"add" : [
-					{
-					"type": self.getType(),
-					"status": self.fromCode(self.status),
-					"ic2_address": self.address
-					}
-				]
-			}
-
-	def setStatus(self, status):
-		self.status = self.fromWord(status)
+def led_module_dict():
+    return {
+        "ERROR": 0,
+        "RGB_FADE_1": 1,
+        "WHITE": 2,
+        "RGB_COLOR_WIPE": 3,
+        "RGB_FADE_2": 4,
+        "OFF": 5
+    }
 
 
-class LEDModule(Module):
-
-	def __init__(self, id_, addr):
-		Module.__init__(self, id_, addr)
-		last_status = None
-
-	statuses = {
-		"ERROR":0,
-		"RGB_FADE_1":1,
-		"WHITE":2,
-		"RGB_COLOR_WIPE":3,
-		"RGB_FADE_2":4,
-		"OFF":5,
-		"ON":6
-	}
-
-	# converts "OFF"->5
-	def fromWord(status):
-		return LEDModule.statuses[status]
-
-	# converts 5->"OFF"
-	def fromCode(status):
-		return list(LEDModule.statuses.keys())[status]
-
-	# Has a special "set status" due to the on/off thing
-	def setStatus(self, status):
-		if(status == "ON"):
-			self.status, self.last_status = self.last_status, self.status
-		else:
-			self.last_status = self.status
-			self.status = self.fromWord(status)
-	
-	def getType(self):
-		return "LED"
+def blind_module_dict():
+    return {
+        "DOWN": 0,
+        "UP": 1,
+        "IDLE": 2
+    }
 
 
-class BlindModule(Module):
-	statuses = [
-		"DOWN":0,
-		"UP":1,
-		"IDLE":2
-	]
-	
-	def fromWord(status):
-		return LEDModule.statuses[status]
+def from_word(word, dictionary):
+    return dictionary[word]
 
-	def fromCode(status):
-		return list(LEDModule.statuses.keys())[status]
 
-	def getType(self):
-		return "BLIND"
-
+def from_code(code, dictionary):
+    return list(dictionary.keys())[code]
 
 
 main()

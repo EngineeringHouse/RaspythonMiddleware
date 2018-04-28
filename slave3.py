@@ -41,7 +41,7 @@ address = 0x04
 
 def main():
 
-
+	# Read room id
 	roomId = -1
 
 	try:
@@ -65,6 +65,8 @@ def main():
 	# Listen for incoming messages from the board
 	while True:
 
+
+		# This should probably just be removed. It's trash
 		if(not testMode):
 			#Receives the data from the User
 			data = raw_input("Enter the led command to be sent: ")
@@ -84,7 +86,8 @@ def main():
 
 
 
-
+# Still no idea what an event looks like
+# Never got one working
 def eventHandler(*args, **kwargs):
 	print(args)
 	print(kwargs)
@@ -93,7 +96,7 @@ def eventHandler(*args, **kwargs):
 
 		bus.write_byte_data(address, 0, value)
 
-
+# Given how this got updated, this name is bad. Can be used for general posts tho
 def postConfirmation(currentState):
 	req = urllib.request.Request(url=base_url+pre_api+str(roomId)+post_api,
 									method='POST',
@@ -103,12 +106,14 @@ def postConfirmation(currentState):
 	return res.read().decode('utf-8')
 
 
+# Stuff to deal with different types of modules
 class Module:
 	def __init__(self, id_, addr):
 		self.id = id_
 		self.address = addr
 		status = 0
-
+	
+	# Should be the same across the subclasses, but python is weird.
 	def getStatus(self):
 		return {
 				"add" : [
@@ -140,12 +145,15 @@ class LEDModule(Module):
 		"ON":6
 	}
 
-	def fromWord(self.status):
+	# converts "OFF"->5
+	def fromWord(self, status):
 		return LEDModule.statuses[status]
 
-	def fromCode(self.status):
+	# converts 5->"OFF"
+	def fromCode(self, status):
 		return list(LEDModule.statuses.keys())[status]
 
+	# Has a special "set status" due to the on/off thing
 	def setStatus(self, status):
 		if(status == "ON"):
 			self.status, self.last_status = self.last_status, self.status

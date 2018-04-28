@@ -52,37 +52,48 @@ def main():
 		roomId = int(f.readLine().strip())
 		f.close()
 	
-	#Establish pusher connection
-	pusher = pysher.Pusher(appkey)
-
-	def connectionHandler(data):
-		channel = pusher.subscribe(channelName)
-		channel.bind(eventName, eventHandler)
-
-	pusher.connection.bind('pusher:connection_established', connectionHandler)
-	pusher.connect()
+#	#Establish pusher connection
+#	pusher = pysher.Pusher(appkey)
+#
+#	def connectionHandler(data):
+#		channel = pusher.subscribe(channelName)
+#		channel.bind(eventName, eventHandler)
+#
+#	pusher.connection.bind('pusher:connection_established', connectionHandler)
+#	pusher.connect()
 
 	# Listen for incoming messages from the board
+	# Will need to prepopulate these in the database because I don't know
+	# how to detect them.
 	while True:
+		lastStatus = currentStatus
+		currentStatus = getStatus()
+		if(currentStatus != lastStatus):
+			s = loads(currentStatus)
+			for module in s['modules']:
 
+				bus.write_byte(module['i2c_address'], LEDModule.fromCode(module['status') if upper(module['type']) == "LED" else BlindModule.fromCode(module['status']))
 
-		# This should probably just be removed. It's trash
-		if(not testMode):
-			#Receives the data from the User
-			data = raw_input("Enter the led command to be sent: ")
-			data_list = list(data)
-			for i in data_list:
-				try:
-					#Sends to the Slaves 
-					writeNumber(ord(i))
-					time.sleep(.1)
-				except Exception as e:
-					print(e)
+			
 		
-			try:
-				writeNumber(0x0A)
-			except Exception as e:
-					print(e)
+
+#		# This should probably just be removed. It's trash
+#		if(not testMode):
+#			#Receives the data from the User
+#			data = raw_input("Enter the led command to be sent: ")
+#			data_list = list(data)
+#			for i in data_list:
+#				try:
+#					#Sends to the Slaves 
+#					writeNumber(ord(i))
+#					time.sleep(.1)
+#				except Exception as e:
+#					print(e)
+#		
+#			try:
+#				writeNumber(0x0A)
+#			except Exception as e:
+#					print(e)
 
 
 
@@ -98,12 +109,19 @@ def eventHandler(*args, **kwargs):
 
 # Given how this got updated, this name is bad. Can be used for general posts tho
 def postConfirmation(currentState):
-	req = urllib.request.Request(url=base_url+pre_api+str(roomId)+post_api,
+	req = urllib.request.Request(url=base_url+pre_api+str(roomId),
 									method='POST',
 									data=json.dumps(currentState))
 
 	res = urllib.request.urlopen(req)
 	return res.read().decode('utf-8')
+
+# gets the status for polling because fuck me
+def getStatus():
+	req = urllib.request.Request(url=base_url+pre_api+str(roomId))
+	res = urllib.request.urlopen(req)
+	return res.read().decode('utf-8')
+
 
 
 # Stuff to deal with different types of modules
@@ -146,11 +164,11 @@ class LEDModule(Module):
 	}
 
 	# converts "OFF"->5
-	def fromWord(self, status):
+	def fromWord(status):
 		return LEDModule.statuses[status]
 
 	# converts 5->"OFF"
-	def fromCode(self, status):
+	def fromCode(status):
 		return list(LEDModule.statuses.keys())[status]
 
 	# Has a special "set status" due to the on/off thing
@@ -172,10 +190,10 @@ class BlindModule(Module):
 		"IDLE":2
 	]
 	
-	def fromWord(self.status):
+	def fromWord(status):
 		return LEDModule.statuses[status]
 
-	def fromCode(self.status):
+	def fromCode(status):
 		return list(LEDModule.statuses.keys())[status]
 
 	def getType(self):

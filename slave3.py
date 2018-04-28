@@ -6,7 +6,7 @@
 
 # IMPORTS
 
-import json
+import json, time
 import urllib.request
 
 # Testing disables some things (so it runs away from raspi)
@@ -48,6 +48,8 @@ def main():
                     from_code(module['status'], led_module_dict()) if module['type'].upper() == "LED"
                     else from_code(module['status'], blind_module_dict())
                 )
+
+        time.sleep(1)
 
 
 # gets the status for polling because fuck me
